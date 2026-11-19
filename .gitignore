@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+.vscode/
+outputs/
+runs/
+*.pt
+*.safetensors
+*.gif
+docs/tutorial/
