@@ -1,4 +1,4 @@
-"""Stage 1 training run settings. Defaults reproduce lerobot/diffusion_pusht."""
+"""Stage 1 training run settings + Eval Configs. Defaults reproduce lerobot/diffusion_pusht."""
 
 from dataclasses import dataclass
 from pathlib import Path
@@ -40,3 +40,16 @@ class TrainConfig:
     @property
     def run_dir(self) -> Path:
         return self.runs_dir / self.run_name
+
+
+
+@dataclass
+class EvalConfig:
+    policy_path: str = "lerobot/diffusion_pusht"  # local pretrained_model folder or Hub id
+    n_episodes: int = 50
+    start_seed: int = 100_000  # env seeds start_seed .. start_seed + n_episodes - 1
+    max_steps: int = 300
+    n_gifs: int = 5
+    torch_seed: int = 0        # fixes the DDPM sampling noise
+    out_dir: Path | None = None
+    device: str = "cuda"
