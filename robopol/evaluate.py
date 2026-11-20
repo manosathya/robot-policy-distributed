@@ -1,5 +1,5 @@
 """Success rate of a Diffusion Policy checkpoint in the PushT simulator.
-Run: python -m robopol.evaluate --policy_path=~/runs/stage1/checkpoints/0020000/pretrained_model
+Run: python -m robopol.evaluate --policy_path=runs/stage1/checkpoints/0020000/pretrained_model
 """
 import json
 import logging
@@ -20,8 +20,7 @@ from lerobot.envs.utils import preprocess_observation
 from lerobot.policies import make_pre_post_processors
 from lerobot.policies.diffusion import DiffusionPolicy
 
-from robopol.config import EvalConfig
-
+from robopol.config import EvalConfig, RUNS_DIR
 
 def wilson_interval(successes: int, n: int, z: float = 1.96) -> tuple[float, float]:
     if n == 0:
@@ -64,7 +63,7 @@ def main() -> None:
     torch.manual_seed(cfg.torch_seed)
 
     policy_path = str(Path(cfg.policy_path).expanduser()) if Path(cfg.policy_path).expanduser().exists() else cfg.policy_path
-    out_dir = cfg.out_dir or (Path(policy_path).parent / "eval" if Path(policy_path).exists() else Path.home() / "runs" / "eval")
+    out_dir = cfg.out_dir or (Path(policy_path).parent / "eval" if Path(policy_path).exists() else RUNS_DIR / "eval")
     out_dir = Path(out_dir).expanduser()
     out_dir.mkdir(parents=True, exist_ok=True)
 

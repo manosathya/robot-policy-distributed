@@ -7,9 +7,10 @@ import torch
 from torchvision.utils import save_image
 
 from lerobot.datasets import LeRobotDataset, LeRobotDatasetMetadata
+from robopol.config import RUNS_DIR
 
 REPO_ID = "lerobot/pusht"
-OUT = Path.home() / "runs" / "inspect"
+OUT = RUNS_DIR / "inspect"
 OUT.mkdir(parents=True, exist_ok=True)
 
 # %% Metadata Analysis

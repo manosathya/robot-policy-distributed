@@ -3,6 +3,8 @@
 from dataclasses import dataclass
 from pathlib import Path
 
+REPO_ROOT = Path(__file__).resolve().parents[1]  # robopol/config.py -> repo root
+RUNS_DIR = REPO_ROOT / "runs"
 
 @dataclass
 class TrainConfig:
@@ -32,7 +34,7 @@ class TrainConfig:
     # --- logging ---
     seed: int = 1000
     run_name: str = "stage1"
-    runs_dir: Path = Path.home() / "runs"
+    runs_dir: Path = RUNS_DIR
     log_every: int = 100
     save_every: int = 5_000
     overfit_one_batch: bool = False
