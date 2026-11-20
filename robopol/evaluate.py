@@ -2,6 +2,7 @@
 Run: python -m robopol.evaluate --policy_path=runs/stage1/checkpoints/0020000/pretrained_model
 """
 import json
+import copy
 import logging
 import math
 import time
@@ -16,6 +17,8 @@ import gymnasium as gym
 import numpy as np
 import torch
 from PIL import Image
+from huggingface_hub import hf_hub_download
+from safetensors.torch import load_file
 
 from lerobot.datasets import LeRobotDatasetMetadata
 from lerobot.envs.utils import preprocess_observation
@@ -23,6 +26,17 @@ from lerobot.policies import make_pre_post_processors
 from lerobot.policies.diffusion import DiffusionPolicy
 
 from robopol.config import EvalConfig, RUNS_DIR
+
+def load_processors(policy, policy_path: str, meta):
+    if (Path(policy_path) / "policy_preprocessor.json").exists():
+        # Our own checkpoints: use the exact processors saved with the model.
+        return make_pre_post_processors(policy.config, pretrained_path=policy_path)
+    # Legacy Hub model: its normalisation stats live inside model.safetensors.
+    weights = load_file(hf_hub_download(policy_path, "model.safetensors"))
+    stats = copy.deepcopy(meta.stats)
+    for s in ("mean", "std"):
+        stats["observation.image"][s] = weights[f"normalize_inputs.buffer_observation_image.{s}"].numpy()
+    return make_pre_post_processors(policy.config, dataset_stats=stats)
 
 def wilson_interval(successes: int, n: int, z: float = 1.96) -> tuple[float, float]:
     if n == 0:
@@ -136,7 +150,7 @@ def main() -> None:
     policy.to(cfg.device).eval()
     # Normalisation from the full dataset's stats: identical to what training used.
     meta = LeRobotDatasetMetadata("lerobot/pusht")
-    preprocessor, postprocessor = make_pre_post_processors(policy.config, dataset_stats=meta.stats)
+    preprocessor, postprocessor = load_processors(policy, policy_path, meta)
 
     seeds = [cfg.start_seed + i for i in range(cfg.n_episodes)]
     results, t0 = [], time.perf_counter()
