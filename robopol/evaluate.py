@@ -7,6 +7,8 @@ import math
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from functools import partial
+
 
 import draccus
 import gym_pusht  # noqa: F401  (import registers "gym_pusht/PushT-v0")
@@ -56,6 +58,69 @@ def save_gif(frames: list[np.ndarray], path: Path, fps: int = 10) -> None:
     images = [Image.fromarray(f) for f in frames]
     images[0].save(path, save_all=True, append_images=images[1:], duration=1000 // fps, loop=0)
 
+def make_env(max_steps: int):
+    return gym.make(
+        "gym_pusht/PushT-v0",
+        obs_type="pixels_agent_pos",
+        render_mode="rgb_array",
+        visualization_width=384,
+        visualization_height=384,
+        max_episode_steps=max_steps,
+    )
+
+from functools import partial
+
+
+def make_env(max_steps: int):
+    return gym.make(
+        "gym_pusht/PushT-v0",
+        obs_type="pixels_agent_pos",
+        render_mode="rgb_array",
+        visualization_width=384,
+        visualization_height=384,
+        max_episode_steps=max_steps,
+    )
+
+
+def run_vectorised(policy, preprocessor, postprocessor, seeds: list[int], max_steps: int, n_gifs: int):
+    n = len(seeds)
+    env = gym.vector.SyncVectorEnv([partial(make_env, max_steps) for _ in range(n)])
+    policy.reset()
+    obs, info = env.reset(seed=seeds)
+
+    done = np.zeros(n, dtype=bool)
+    success = np.zeros(n, dtype=bool)
+    max_coverage = np.zeros(n)
+    steps = np.zeros(n, dtype=int)
+    frames = [[env.envs[i].render()] for i in range(min(n_gifs, n))]
+
+    for t in range(1, max_steps + 1):
+        batch = preprocessor(preprocess_observation(obs))
+        with torch.inference_mode():
+            action = policy.select_action(batch)         # (n, 2), normalised
+        action = postprocessor(action).numpy()           # (n, 2), pixel targets
+        obs, reward, terminated, truncated, info = env.step(action)
+
+        active = ~done                                   # envs still in their first episode
+        coverage = np.asarray(info["coverage"], dtype=float)
+        max_coverage[active] = np.maximum(max_coverage[active], coverage[active])
+        success[active] |= np.asarray(info["is_success"], dtype=bool)[active]
+        steps[active] = t
+        for i, f in enumerate(frames):
+            if active[i]:
+                f.append(env.envs[i].render())
+
+        done |= terminated | truncated
+        if done.all():
+            break
+    env.close()
+
+    results = [
+        {"seed": s, "success": bool(success[i]), "max_coverage": float(max_coverage[i]), "steps": int(steps[i])}
+        for i, s in enumerate(seeds)
+    ]
+    return results, frames
+
 
 def main() -> None:
     cfg = draccus.parse(config_class=EvalConfig)
@@ -73,26 +138,19 @@ def main() -> None:
     meta = LeRobotDatasetMetadata("lerobot/pusht")
     preprocessor, postprocessor = make_pre_post_processors(policy.config, dataset_stats=meta.stats)
 
-    env = gym.make(
-        "gym_pusht/PushT-v0",
-        obs_type="pixels_agent_pos",
-        render_mode="rgb_array",
-        visualization_width=384,
-        visualization_height=384,
-        max_episode_steps=cfg.max_steps,
-    )
-
+    seeds = [cfg.start_seed + i for i in range(cfg.n_episodes)]
     results, t0 = [], time.perf_counter()
-    for i in range(cfg.n_episodes):
-        seed = cfg.start_seed + i
-        record = i < cfg.n_gifs
-        result, frames = run_episode(env, policy, preprocessor, postprocessor, seed, cfg.max_steps, record)
-        results.append(result)
-        if record:
-            save_gif(frames, out_dir / f"episode_{seed}_{'success' if result['success'] else 'fail'}.gif")
-        logging.info("episode %3d seed %d: success=%s max_coverage=%.2f steps=%d",
-                     i, seed, result["success"], result["max_coverage"], result["steps"])
-    env.close()
+    for start in range(0, len(seeds), cfg.n_envs):
+        chunk = seeds[start:start + cfg.n_envs]
+        n_gifs = max(0, cfg.n_gifs - start)  # GIFs only from the first chunk(s)
+        chunk_results, frames = run_vectorised(policy, preprocessor, postprocessor, chunk, cfg.max_steps, n_gifs)
+        results.extend(chunk_results)
+        for r, f in zip(chunk_results, frames):
+            save_gif(f, out_dir / f"episode_{r['seed']}_{'success' if r['success'] else 'fail'}.gif")
+        for r in chunk_results:
+            logging.info("seed %d: success=%s max_coverage=%.2f steps=%d",
+                         r["seed"], r["success"], r["max_coverage"], r["steps"])
+
 
     n_success = sum(r["success"] for r in results)
     low, high = wilson_interval(n_success, len(results))

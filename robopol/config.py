@@ -55,3 +55,4 @@ class EvalConfig:
     torch_seed: int = 0        # fixes the DDPM sampling noise
     out_dir: Path | None = None
     device: str = "cuda"
+    n_envs: int = 50  # episodes run in parallel; 1 = the sequential evaluator
