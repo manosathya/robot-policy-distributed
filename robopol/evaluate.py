@@ -82,8 +82,6 @@ def make_env(max_steps: int):
         max_episode_steps=max_steps,
     )
 
-from functools import partial
-
 
 def make_env(max_steps: int):
     return gym.make(
